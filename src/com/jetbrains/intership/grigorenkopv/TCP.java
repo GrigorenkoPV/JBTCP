@@ -12,8 +12,14 @@ import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class TCP {
+    // CONFIG VALUES
+    private static final int SERVER_SOCKET_BACKLOG = 50;
+    private static final int SERVER_THREAD_POOL_SIZE = 10;
+
     // COMMON CODE
     private static void printException(String message, Exception exception, PrintStream printStream) {
         printStream.printf("%s: %s%n", message, exception.getMessage());
@@ -153,18 +159,21 @@ public class TCP {
     }
 
     public static void server(String host, String port) {
-        // todo: backlog
         try (final ServerSocket serverSocket =
-                     new ServerSocket(Integer.parseInt(port), 10, InetAddress.getByName(host))) {
+                     new ServerSocket(Integer.parseInt(port), SERVER_SOCKET_BACKLOG, InetAddress.getByName(host))) {
             System.err.println("Serving at " + serverSocket.getInetAddress() + " on port " + serverSocket.getLocalPort());
-            while (true) {
-                try {
-                    final Socket clientSocket = serverSocket.accept();
-                    // todo: Thread management
-                    new Thread(() -> serveClient(clientSocket)).start();
-                } catch (IOException e) {
-                    e.printStackTrace();
+            final ExecutorService serverThreadPool = Executors.newFixedThreadPool(SERVER_THREAD_POOL_SIZE);
+            try {
+                while (true) {
+                    try {
+                        final Socket clientSocket = serverSocket.accept();
+                        serverThreadPool.execute(() -> serveClient(clientSocket));
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                 }
+            } finally {
+                serverThreadPool.shutdown();
             }
         } catch (UnknownHostException e) {
             printException("Couldn't resolve host", e);
